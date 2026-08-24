@@ -22,7 +22,7 @@ router.post('/login', async (req, res, next) => {
     res.json({
       token,
       mustResetPassword: !!emp.must_reset_password,
-      user: { id: emp.id, name: emp.name, email: emp.email, role: emp.role, dept: emp.dept, photo: emp.photo }
+      user: { id: emp.id, name: emp.name, email: emp.email, role: emp.role, dept: emp.dept, photo: emp.photo, gender: emp.gender }
     });
   } catch (e) { next(e); }
 });
@@ -49,7 +49,7 @@ router.post('/change-password', requireAuth, async (req, res, next) => {
 
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
-    const emp = await get('SELECT id,name,email,role,dept,gender,manager_id,photo FROM employees WHERE id=?', [req.user.id]);
+    const emp = await get('SELECT id,name,email,role,dept,gender,manager_id,photo,designation,employee_code,joining_date FROM employees WHERE id=?', [req.user.id]);
     if (!emp) return res.status(404).json({ error: 'Account not found.' });
     res.json(emp);
   } catch (e) { next(e); }

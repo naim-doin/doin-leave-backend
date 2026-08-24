@@ -19,8 +19,6 @@ const HOLIDAYS_2026 = [
   ['2026-12-25', 'Christmas Day'],
 ];
 
-// Idempotent — safe to call every time the app starts. Creates the leave-type
-// catalog and a starter holiday list if they don't already exist.
 async function seedReferenceData() {
   for (const t of LEAVE_TYPES) {
     await run('INSERT OR REPLACE INTO leave_types (code,label,default_total,gender_restricted) VALUES (?,?,?,?)',

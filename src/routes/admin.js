@@ -4,9 +4,6 @@ const { requireAuth, requireRole } = require('../auth');
 const { adjustBalance } = require('./employees');
 
 const router = express.Router();
-
-// Days of unused annual leave carried into the new year, capped at this many.
-// Change this if Doin Tech's carry-forward policy differs.
 const ANNUAL_CARRY_FORWARD_CAP = 5;
 
 async function getLastRolloverYear() {
@@ -18,11 +15,7 @@ router.get('/rollover-status', requireAuth, async (req, res, next) => {
   try {
     const currentYear = new Date().getFullYear();
     const lastRolloverYear = await getLastRolloverYear();
-    res.json({
-      currentYear,
-      lastRolloverYear,
-      dueForRollover: lastRolloverYear === null || lastRolloverYear < currentYear
-    });
+    res.json({ currentYear, lastRolloverYear, dueForRollover: lastRolloverYear === null || lastRolloverYear < currentYear });
   } catch (e) { next(e); }
 });
 
@@ -33,11 +26,9 @@ router.post('/rollover', requireAuth, requireRole('hr'), async (req, res, next) 
     if (lastRolloverYear !== null && lastRolloverYear >= currentYear) {
       return res.status(409).json({ error: `Rollover has already run for ${currentYear}.` });
     }
-
     const employees = await all('SELECT id FROM employees');
     const types = await all('SELECT code,default_total FROM leave_types');
-    let adjustedCount = 0;
-    let totalCarried = 0;
+    let adjustedCount = 0, totalCarried = 0;
 
     for (const emp of employees) {
       for (const t of types) {
@@ -50,16 +41,10 @@ router.post('/rollover', requireAuth, requireRole('hr'), async (req, res, next) 
         }
         const newTotal = t.default_total + carry;
         await adjustBalance(emp.id, t.code, { used: 0, total: newTotal }, req.user.id, `Year-end rollover to ${currentYear}${carry > 0 ? ` (carried forward ${carry} annual day${carry === 1 ? '' : 's'})` : ''}`);
-        adjustedCount++;
-        totalCarried += carry;
+        adjustedCount++; totalCarried += carry;
       }
     }
-
-    await run(`
-      INSERT INTO settings (key,value) VALUES ('last_rollover_year', ?)
-      ON CONFLICT(key) DO UPDATE SET value=excluded.value
-    `, [String(currentYear)]);
-
+    await run(`INSERT INTO settings (key,value) VALUES ('last_rollover_year', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, [String(currentYear)]);
     res.json({ ok: true, year: currentYear, employeesProcessed: employees.length, balancesAdjusted: adjustedCount, totalAnnualDaysCarried: totalCarried, carryForwardCap: ANNUAL_CARRY_FORWARD_CAP });
   } catch (e) { next(e); }
 });

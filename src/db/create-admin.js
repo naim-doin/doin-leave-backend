@@ -1,14 +1,3 @@
-// Creates the very first real HR account for a production launch — no fake
-// demo employees, just your actual admin login. Run this once, directly on
-// wherever the backend runs (locally, or via your host's shell/console).
-// This is deliberately NOT a web endpoint: exposing "create an HR account"
-// over HTTP would let anyone on the internet make themselves an admin.
-//
-// Usage (flags):
-//   npm run create-admin -- --name "Jane Doe" --email jane@doin.tech --password "SomeStrongPass123"
-// Usage (interactive, if you leave flags out):
-//   npm run create-admin
-
 const bcrypt = require('bcryptjs');
 const readline = require('readline');
 const { initSchema, get, run } = require('./index');
@@ -18,15 +7,10 @@ function parseArgs() {
   const args = {};
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i].startsWith('--')) {
-      const key = argv[i].slice(2);
-      args[key] = argv[i + 1];
-      i++;
-    }
+    if (argv[i].startsWith('--')) { args[argv[i].slice(2)] = argv[i + 1]; i++; }
   }
   return args;
 }
-
 function ask(question) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(resolve => rl.question(question, answer => { rl.close(); resolve(answer); }));
@@ -41,7 +25,7 @@ async function main() {
   if (!name) name = await ask('Full name: ');
   if (!email) email = await ask('Work email: ');
   if (!password) password = await ask('Password (min 8 characters): ');
-  if (!gender) gender = await ask('Gender (male/female — determines maternity/paternity leave eligibility for this account): ');
+  if (!gender) gender = await ask('Gender (male/female): ');
 
   name = (name || '').trim();
   email = (email || '').trim().toLowerCase();
@@ -53,24 +37,19 @@ async function main() {
   if (!['male', 'female'].includes(gender)) { console.error('Gender must be "male" or "female".'); process.exit(1); }
 
   const existing = await get('SELECT id FROM employees WHERE email=?', [email]);
-  if (existing) {
-    console.error(`An account with ${email} already exists. If this is you, use the "Change password" screen after logging in, or ask an existing HR admin to reset it for you.`);
-    process.exit(1);
-  }
+  if (existing) { console.error(`An account with ${email} already exists.`); process.exit(1); }
 
   const hash = bcrypt.hashSync(password, 10);
   const info = await run(`
-    INSERT INTO employees (name,email,password_hash,dept,gender,role,manager_id,must_reset_password,active)
-    VALUES (?,?,?,?,?,?,?,0,1)
-  `, [name, email, hash, 'People Ops', gender, 'hr', null]);
+    INSERT INTO employees (name,email,password_hash,dept,gender,role,manager_id,must_reset_password,active,designation)
+    VALUES (?,?,?,?,?,?,?,0,1,?)
+  `, [name, email, hash, 'People Ops', gender, 'hr', null, 'HR Manager']);
 
   for (const t of LEAVE_TYPES) {
     await run('INSERT INTO leave_balances (employee_id,type_code,total,used) VALUES (?,?,?,0)', [info.lastInsertRowid, t.code, t.total]);
   }
 
   console.log(`\nHR account created: ${name} <${email}>`);
-  console.log('You can log in with this email and the password you just set — no forced reset, since you chose it yourself.');
-  console.log('Next: log in, then use "Add employee" to bring on your real team, or "Set opening balances" to bulk-import mid-year leave already taken.');
+  console.log('You can log in immediately with the password you just set.');
 }
-
 main().then(() => process.exit(0)).catch(err => { console.error(err); process.exit(1); });

@@ -21,13 +21,11 @@ async function requireAuth(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Not authenticated.' });
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    // re-check against the DB every request — so deactivating someone takes effect
-    // immediately instead of waiting for their existing token to expire.
     const emp = await get('SELECT active, role FROM employees WHERE id=?', [payload.id]);
     if (!emp || !emp.active) {
       return res.status(401).json({ error: 'This account has been deactivated. Contact HR.' });
     }
-    req.user = { ...payload, role: emp.role }; // role reflects current DB state, not the token's snapshot
+    req.user = { ...payload, role: emp.role };
     next();
   } catch (e) {
     return res.status(401).json({ error: 'Session expired or invalid. Please sign in again.' });

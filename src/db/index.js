@@ -1,7 +1,6 @@
+require('dotenv').config();
 const { createClient } = require('@libsql/client');
 
-// Local dev: defaults to a local file, no account needed.
-// Production on Turso: set DB_URL to your libsql:// URL and DB_AUTH_TOKEN to your Turso token.
 const db = createClient({
   url: process.env.DB_URL || 'file:./data.sqlite',
   authToken: process.env.DB_AUTH_TOKEN || undefined
@@ -20,6 +19,9 @@ const SCHEMA = [
     must_reset_password INTEGER NOT NULL DEFAULT 1,
     active INTEGER NOT NULL DEFAULT 1,
     photo TEXT,
+    designation TEXT,
+    employee_code TEXT,
+    joining_date TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
   `CREATE TABLE IF NOT EXISTS leave_types (
@@ -75,23 +77,36 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS document_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    doc_type TEXT NOT NULL CHECK(doc_type IN ('salary_certificate','noc','employment_certificate','other')),
+    note TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+    expected_date TEXT,
+    reject_reason TEXT,
+    requested_at TEXT NOT NULL DEFAULT (datetime('now')),
+    decided_at TEXT,
+    decided_by INTEGER REFERENCES employees(id)
   )`
 ];
 
 async function initSchema() {
-  try { await db.execute('PRAGMA foreign_keys = ON'); } catch (e) { /* not supported over some transports; safe to ignore */ }
-  for (const stmt of SCHEMA) {
-    await db.execute(stmt);
+  try { await db.execute('PRAGMA foreign_keys = ON'); } catch (e) {}
+  for (const stmt of SCHEMA) { await db.execute(stmt); }
+  const migrations = [
+    "ALTER TABLE employees ADD COLUMN active INTEGER NOT NULL DEFAULT 1",
+    "ALTER TABLE employees ADD COLUMN photo TEXT",
+    "ALTER TABLE employees ADD COLUMN designation TEXT",
+    "ALTER TABLE employees ADD COLUMN employee_code TEXT",
+    "ALTER TABLE employees ADD COLUMN joining_date TEXT"
+  ];
+  for (const stmt of migrations) {
+    try { await db.execute(stmt); } catch (e) { /* column already exists — fine */ }
   }
-  // migration: add `active` to employees if it doesn't exist yet (already-deployed databases)
-  try { await db.execute("ALTER TABLE employees ADD COLUMN active INTEGER NOT NULL DEFAULT 1"); }
-  catch (e) { /* column already exists — fine */ }
-  // migration: add `photo` to employees if it doesn't exist yet
-  try { await db.execute("ALTER TABLE employees ADD COLUMN photo TEXT"); }
-  catch (e) { /* column already exists — fine */ }
 }
 
-// Thin helpers so route code reads close to plain SQL.
 async function get(sql, args = []) {
   const res = await db.execute({ sql, args });
   return res.rows[0] || null;
@@ -102,10 +117,6 @@ async function all(sql, args = []) {
 }
 async function run(sql, args = []) {
   const res = await db.execute({ sql, args });
-  // libsql returns lastInsertRowid as a BigInt; convert once here so nothing
-  // downstream (e.g. JSON.stringify in a route handler) can trip over it.
-  // Safe for any realistic row count — BigInt is only needed near 2^53, far
-  // beyond anything this app will ever store.
   return { lastInsertRowid: res.lastInsertRowid !== undefined ? Number(res.lastInsertRowid) : undefined, changes: res.rowsAffected };
 }
 

@@ -5,6 +5,7 @@ const { seedReferenceData, LEAVE_TYPES } = require('./reference-data');
 const FIRST = ["Aarav","Nadia","Tomas","Yui","Kwame","Elena","Farhan","Priya","Lucas","Amara","Hiro","Sofia","Deepak","Maya","Omar","Ingrid","Ravi","Chloe","Sam","Layla","Noah","Zara","Ben","Ines","Kofi","Anya","Rohan","Freya","Tariq","Mei","Diego","Nora","Yusuf","Ana","Kenji","Leila","Marco","Ivy","Rafael","Fatima","Owen","Sana","Theo","Rina","Jamal","Clara","Vikram","Lena","Cyrus","Dana","Emeka","Petra","Salim","Nia","Adam","Wei","Tessa","Ola","Milo","Rhea"];
 const LAST = ["Shah","Kowalski","Reyes","Tanaka","Mensah","Petrova","Rahman","Iyer","Novak","Diallo","Sato","Almeida","Verma","Silva","Haddad","Larsen","Kapoor","Dubois","Kim","Farouk","Bennett","Osei","Marsh","Coelho","Adeyemi","Volkov","Chatterjee","Lindqvist","Malik","Chen"];
 const DEPTS = ["Engineering","Sales","Support","Marketing","Finance","People Ops","Design"];
+const DESIGNATIONS = { Engineering: "Software Engineer", Sales: "Sales Executive", Support: "Support Specialist", Marketing: "Marketing Executive", Finance: "Finance Officer", "People Ops": "HR Associate", Design: "Product Designer" };
 
 function seedRand(seed) { let s = seed; return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; }; }
 const rnd = seedRand(42);
@@ -23,34 +24,34 @@ async function run_() {
   }
 
   const hash = bcrypt.hashSync(DEFAULT_PASSWORD, 10);
-
   const rows = [];
   for (let i = 0; i < 60; i++) {
     const first = FIRST[i], last = pick(LAST);
     const dept = DEPTS[i % DEPTS.length];
     const gender = i % 2 === 0 ? 'male' : 'female';
     const email = `${first.toLowerCase()}.${last.toLowerCase()}${i}@doin.tech`;
-    rows.push({ first, last, dept, gender, email });
+    const joiningDate = `202${3 + (i % 3)}-0${1 + (i % 9 > 8 ? 1 : (i%9)+1) % 9 || 1}-15`.replace('-0-','-01-');
+    rows.push({ first, last, dept, gender, email, employeeCode: `EMP-${String(i+1).padStart(3,'0')}`, joiningDate: `2024-0${(i%9)+1}-15` });
   }
 
   const idByIndex = [];
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     const info = await run(
-      `INSERT INTO employees (name,email,password_hash,dept,gender,role,manager_id,must_reset_password) VALUES (?,?,?,?,?,?,?,1)`,
-      [`${r.first} ${r.last}`, r.email, hash, r.dept, r.gender, 'employee', null]
+      `INSERT INTO employees (name,email,password_hash,dept,gender,role,manager_id,must_reset_password,designation,employee_code,joining_date) VALUES (?,?,?,?,?,?,?,1,?,?,?)`,
+      [`${r.first} ${r.last}`, r.email, hash, r.dept, r.gender, 'employee', null, DESIGNATIONS[r.dept], r.employeeCode, r.joiningDate]
     );
     idByIndex[i] = info.lastInsertRowid;
   }
 
-  await run('UPDATE employees SET role=? WHERE id=?', ['hr', idByIndex[0]]);
+  await run('UPDATE employees SET role=?, designation=? WHERE id=?', ['hr', 'HR Manager', idByIndex[0]]);
 
   const deptManagerId = {};
   for (const d of DEPTS) {
     const idx = rows.findIndex((r, i) => r.dept === d && idByIndex[i] !== idByIndex[0] && !Object.values(deptManagerId).includes(idByIndex[i]));
     if (idx >= 0) {
       const id = idByIndex[idx];
-      await run('UPDATE employees SET role=? WHERE id=?', ['manager', id]);
+      await run('UPDATE employees SET role=?, designation=? WHERE id=?', ['manager', DESIGNATIONS[rows[idx].dept] + ' Manager', id]);
       deptManagerId[d] = id;
     }
   }
@@ -76,7 +77,7 @@ async function run_() {
   console.log(`Default password for every seeded account: ${DEFAULT_PASSWORD} (forced reset on first login)`);
   const hr = await get("SELECT email FROM employees WHERE role='hr'");
   console.log(`Demo HR admin login: ${hr.email}`);
-  console.log(`\nFor a REAL launch, don't use this demo data — run "npm run create-admin" instead to create your actual HR account.`);
+  console.log(`\nFor a REAL launch, don't use this demo data — run "npm run create-admin" instead.`);
 }
 
 run_().then(() => process.exit(0)).catch(err => { console.error(err); process.exit(1); });

@@ -1,13 +1,13 @@
 {
   "name": "doin-leave-backend",
   "version": "1.0.0",
-  "description": "Doin Tech Leave Portal API",
   "main": "src/server.js",
   "type": "commonjs",
   "scripts": {
     "start": "node src/server.js",
     "seed": "node src/db/seed.js",
-    "create-admin": "node src/db/create-admin.js"
+    "create-admin": "node src/db/create-admin.js",
+    "reset-password": "node src/db/reset-password.js"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",

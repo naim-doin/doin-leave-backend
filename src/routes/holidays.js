@@ -5,9 +5,8 @@ const { requireAuth, requireRole } = require('../auth');
 const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
-  try {
-    res.json(await all('SELECT date,label FROM holidays ORDER BY date'));
-  } catch (e) { next(e); }
+  try { res.json(await all('SELECT date,label FROM holidays ORDER BY date')); }
+  catch (e) { next(e); }
 });
 
 router.post('/', requireAuth, requireRole('hr'), async (req, res, next) => {
@@ -20,10 +19,8 @@ router.post('/', requireAuth, requireRole('hr'), async (req, res, next) => {
 });
 
 router.delete('/:date', requireAuth, requireRole('hr'), async (req, res, next) => {
-  try {
-    await run('DELETE FROM holidays WHERE date=?', [req.params.date]);
-    res.json({ ok: true });
-  } catch (e) { next(e); }
+  try { await run('DELETE FROM holidays WHERE date=?', [req.params.date]); res.json({ ok: true }); }
+  catch (e) { next(e); }
 });
 
 module.exports = router;

@@ -9,20 +9,15 @@ const router = express.Router();
 async function logAction(requestId, actorId, action, note) {
   await run('INSERT INTO request_log (request_id,actor_id,action,note) VALUES (?,?,?,?)', [requestId, actorId, action, note || null]);
 }
-
 async function getHolidaySet() {
   const rows = await all('SELECT date FROM holidays');
   return new Set(rows.map(h => h.date));
 }
-
-// used by approve/reject/cancel — all three need the employee's name and the
-// leave type's label just for the Discord notification text.
 async function notifyContext(r) {
   const emp = await get('SELECT name FROM employees WHERE id=?', [r.employee_id]);
   const type = await get('SELECT label FROM leave_types WHERE code=?', [r.type_code]);
   return { employeeName: emp.name, typeLabel: type.label };
 }
-
 async function serializeRequest(r) {
   const log = await all('SELECT actor_id,action,note,created_at FROM request_log WHERE request_id=? ORDER BY created_at', [r.id]);
   const emp = await get('SELECT name,dept FROM employees WHERE id=?', [r.employee_id]);
@@ -59,6 +54,10 @@ router.post('/', requireAuth, async (req, res, next) => {
     if (!type || !start || !end) return res.status(400).json({ error: 'type, start and end are required.' });
     if (end < start) return res.status(400).json({ error: 'End date is before start date.' });
     if (halfDay && start !== end) return res.status(400).json({ error: 'Half-day leave must be a single date (start and end the same).' });
+
+    if (type === 'unpaid') {
+      return res.status(403).json({ error: 'Unpaid leave is recorded directly by HR, not applied for here. Contact HR.' });
+    }
 
     const leaveType = await get('SELECT * FROM leave_types WHERE code=?', [type]);
     if (!leaveType) return res.status(400).json({ error: 'Unknown leave type.' });
@@ -168,28 +167,46 @@ router.post('/preview-days', requireAuth, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// company-wide leave calendar feed — names/dates only, no reasons or other request details,
-// so any signed-in employee can see who's out without seeing why
+// company-wide leave calendar feed — names/dates/designation only, no reasons or other request details
 router.get('/calendar', requireAuth, async (req, res, next) => {
   try {
     const { start, end } = req.query;
     let rows;
     if (start && end) {
       rows = await all(`
-        SELECT r.employee_id, e.name, e.dept, r.start_date, r.end_date
+        SELECT r.employee_id, e.name, e.dept, e.designation, r.start_date, r.end_date, r.days
         FROM requests r JOIN employees e ON e.id = r.employee_id
         WHERE r.status='approved' AND r.start_date <= ? AND r.end_date >= ?
         ORDER BY r.start_date
       `, [end, start]);
     } else {
       rows = await all(`
-        SELECT r.employee_id, e.name, e.dept, r.start_date, r.end_date
+        SELECT r.employee_id, e.name, e.dept, e.designation, r.start_date, r.end_date, r.days
         FROM requests r JOIN employees e ON e.id = r.employee_id
         WHERE r.status='approved'
         ORDER BY r.start_date
       `);
     }
-    res.json(rows.map(r => ({ employeeId: r.employee_id, name: r.name, dept: r.dept, start: r.start_date, end: r.end_date })));
+    res.json(rows.map(r => ({ employeeId: r.employee_id, name: r.name, dept: r.dept, designation: r.designation, start: r.start_date, end: r.end_date, days: r.days })));
+  } catch (e) { next(e); }
+});
+
+// who is on leave RIGHT NOW — visible to everyone, dedicated endpoint for the "On Leave" page
+router.get('/on-leave-now', requireAuth, async (req, res, next) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = await all(`
+      SELECT r.employee_id, e.name, e.dept, e.designation, r.start_date, r.end_date, r.days, r.type_code, lt.label as type_label
+      FROM requests r
+      JOIN employees e ON e.id = r.employee_id
+      JOIN leave_types lt ON lt.code = r.type_code
+      WHERE r.status='approved' AND r.start_date <= ? AND r.end_date >= ?
+      ORDER BY r.end_date
+    `, [today, today]);
+    res.json(rows.map(r => ({
+      employeeId: r.employee_id, name: r.name, dept: r.dept, designation: r.designation,
+      start: r.start_date, end: r.end_date, days: r.days, type: r.type_label
+    })));
   } catch (e) { next(e); }
 });
 

@@ -9,15 +9,13 @@ const requestRoutes = require('./routes/requests');
 const holidayRoutes = require('./routes/holidays');
 const miscRoutes = require('./routes/misc');
 const adminRoutes = require('./routes/admin');
+const documentRoutes = require('./routes/documents');
 
 const app = express();
-app.use(express.json({ limit: '400kb' })); // bumped from a plain-form-data size to fit small profile photo uploads
+app.use(express.json({ limit: '400kb' }));
 
 const allowedOrigins = (process.env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
-app.use(cors({
-  origin: allowedOrigins.length ? allowedOrigins : true,
-  credentials: true
-}));
+app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : true, credentials: true }));
 
 const loginAttempts = new Map();
 app.use('/api/auth/login', (req, res, next) => {
@@ -38,6 +36,7 @@ app.use('/api/requests', requestRoutes);
 app.use('/api/holidays', holidayRoutes);
 app.use('/api', miscRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/documents', documentRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
@@ -45,12 +44,6 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 4000;
-
 initSchema()
-  .then(() => {
-    app.listen(PORT, () => console.log(`Doin Leave API listening on port ${PORT}`));
-  })
-  .catch(err => {
-    console.error('Failed to initialize database schema:', err);
-    process.exit(1);
-  });
+  .then(() => { app.listen(PORT, () => console.log(`Doin Leave API listening on port ${PORT}`)); })
+  .catch(err => { console.error('Failed to initialize database schema:', err); process.exit(1); });
